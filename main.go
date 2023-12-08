@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
 	"net/http"
 	"os"
@@ -9,26 +10,38 @@ import (
 	"time"
 
 	"github.com/Sahas001/go-micro/handlers"
+	"github.com/gorilla/mux"
 )
 
 func main() {
+	bindAddress := flag.String("addr", ":9090", "Port to run server on")
+	flag.Parse()
 	l := log.New(os.Stdout, "products-api", log.LstdFlags)
 
 	ph := handlers.NewProducts(l)
 
-	sm := http.NewServeMux()
+	sm := mux.NewRouter()
 
-	sm.Handle("/", ph)
+	getRouter := sm.Methods(http.MethodGet).Subrouter()
+	getRouter.HandleFunc("/", ph.GetProducts)
+
+	putRouter := sm.Methods(http.MethodPut).Subrouter()
+	putRouter.HandleFunc("/{id:[0-9]+}", ph.UpdateProducts)
+	putRouter.Use(ph.MiddlewareValidateProduct)
+
+	postRouter := sm.Methods(http.MethodPost).Subrouter()
+	postRouter.HandleFunc("/", ph.AddProduct)
+	postRouter.Use(ph.MiddlewareValidateProduct)
 
 	server := http.Server{
-		Addr:         ":9090",
+		Addr:         *bindAddress,
 		Handler:      sm,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
 	go func() {
-		l.Println("Starting server on port 9090")
+		l.Println("Starting server on port", *bindAddress)
 		err := server.ListenAndServe()
 		if err != nil {
 			l.Printf("Error Starting server: %s\n", err)
